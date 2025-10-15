@@ -35,21 +35,19 @@ jobs:
         run: |
           go install github.com/mh-cbon/go-msi@latest
           
-      - name: Generate GUIDs for wix.json
-        shell: powershell
-        run: |
-          $filesGuid = [guid]::NewGuid().ToString()
-          $shortcutsGuid = [guid]::NewGuid().ToString()
-          (Get-Content wix.json) -replace '"guid": "",', "`"guid`": `"$filesGuid`"," | Set-Content wix.json.tmp
-          Move-Item -Force wix.json.tmp wix.json
-          
       - name: Initialize go-msi templates
         shell: powershell
         run: |
           $env:PATH = "$env:GOPATH\bin;$env:PATH"
           go-msi check-json
           go-msi set-guid
-          go-msi generate-templates
+          go-msi generate-templates --version ${{ steps.version.outputs.version }}
+      
+      - name: go-msi Check Environment
+        shell: powershell
+        run: |
+          $env:PATH = "$env:GOPATH\bin;$env:PATH"
+          go-msi check-env
           
       - name: Create MSI installer
         shell: powershell
