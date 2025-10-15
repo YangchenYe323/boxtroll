@@ -39,9 +39,12 @@ jobs:
         shell: powershell
         run: |
           $env:PATH = "$env:GOPATH\bin;$env:PATH"
+          $env:TMP = "$PWD\tmp"
+          $env:TEMP = "$PWD\tmp"
+          New-Item -ItemType Directory -Force -Path tmp | Out-Null
           go-msi check-json
           go-msi set-guid
-          go-msi generate-templates --version ${{ steps.version.outputs.version }} --path $PWD
+          go-msi generate-templates --version ${{ steps.version.outputs.version }}
       
       - name: go-msi Check Environment
         shell: powershell
