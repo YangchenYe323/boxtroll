@@ -25,7 +25,7 @@
             {
                 "name": "Boxtroll",
                 "description": "Launch Boxtroll CLI",
-                "target": "[INSTALLDIR]\\cmd.exe",
+                "target": "[INSTALLDIR]\\boxtroll.exe",
                 "wdir": "INSTALLDIR"
             }
         ]
