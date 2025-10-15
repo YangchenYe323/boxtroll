@@ -6,16 +6,27 @@
       "guid": "b831d35d-4132-40cb-bd9f-73c1996c6b37",
       "items": ["boxtroll.exe"]
     },
+    "env": {
+      "guid": "d0d3b8ea-2086-4ead-b1b4-0702ac34bb30",
+      "vars": [
+        {
+          "name": "PATH",
+          "value": "[INSTALLDIR]",
+          "permanent": "no",
+          "system": "no",
+          "action": "set",
+          "part": "last"
+        }
+      ]
+    },
     "shortcuts": {
         "guid": "f0389111-077f-4e3b-867a-243078946395",
         "items": [
             {
                 "name": "Boxtroll",
                 "description": "Launch Boxtroll CLI",
-                "target": "SystemFolder\\cmd.exe",
-                "arguments": "/K \"INSTALLDIR\\boxtroll.exe\"",
-                "wdir": "INSTALLDIR",
-                "icon": ""
+                "target": "[INSTALLDIR]\\cmd.exe",
+                "wdir": "INSTALLDIR"
             }
         ]
     },
