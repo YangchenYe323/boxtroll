@@ -42,18 +42,18 @@ jobs:
           go-msi check-env
         shell: bash
 
-      - name: Go-MSI Build Installer
+      - name: Build MSI
         run: |
-          $env:TMP = "$PWD\tmp"
-          $env:TEMP = "$PWD\tmp"
-          New-Item -ItemType Directory -Force -Path tmp | Out-Null
+          export TMP="$PWD/tmp"
+          export TEMP="$TMP"
+          mkdir -p "$TMP"
           go-msi make \
-          --msi boxtroll-${{ steps.version.outputs.VERSION }}-amd64.msi \
-          --version ${{ steps.version.outputs.VERSION }} \
-          --arch amd64 \
-          --src 'installer/templates/' \
-          --path 'installer/wix.json'
-        shell: powershell
+            --msi boxtroll-${{ steps.version.outputs.VERSION }}-amd64.msi \
+            --version ${{ steps.version.outputs.VERSION }} \
+            --arch amd64 \
+            --src 'installer/templates/' \
+            --path 'installer/wix.json'
+        shell: bash
 
       - name: Create Release
         id: create_release
