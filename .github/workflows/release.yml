@@ -34,29 +34,22 @@ jobs:
       - name: Install go-msi
         run: |
           go install github.com/mh-cbon/go-msi@latest
-          
-      - name: Initialize go-msi templates
-        shell: powershell
-        run: |
-          $env:PATH = "$env:GOPATH\bin;$env:PATH"
-          $env:TMP = "$PWD\tmp"
-          $env:TEMP = "$PWD\tmp"
-          New-Item -ItemType Directory -Force -Path tmp | Out-Null
-          go-msi check-json
-          go-msi set-guid
-          go-msi generate-templates --version ${{ steps.version.outputs.version }}
+        
+      - name: Add go-msi to PATH
+        run: echo "$GOPATH/bin" >> $GITHUB_PATH
+        shell: bash
       
-      - name: go-msi Check Environment
-        shell: powershell
-        run: |
-          $env:PATH = "$env:GOPATH\bin;$env:PATH"
-          go-msi check-env
-          
+      - name: Add Wix Toolset to PATH
+        run: echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $GITHUB_PATH
+        shell: bash
+
       - name: Create MSI installer
         shell: powershell
         run: |
-          $env:PATH = "$env:GOPATH\bin;$env:PATH"
-          go-msi make --msi boxtroll-${{ steps.version.outputs.version }}.msi --version ${{ steps.version.outputs.version }} --arch amd64 --src $PWD --out $PWD
+          $env:TMP = "$PWD\tmp"
+          $env:TEMP = "$PWD\tmp"
+          New-Item -ItemType Directory -Force -Path tmp | Out-Null
+          go-msi make --msi boxtroll-${{ steps.version.outputs.version }}.msi --version ${{ steps.version.outputs.version }} --arch amd64
           
       - name: Create Release
         id: create_release
