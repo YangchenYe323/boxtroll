@@ -19,6 +19,17 @@
         }
       ]
     },
+    "shortcuts": {
+        "guid": "f0389111-077f-4e3b-867a-243078946395",
+        "items": [
+            {
+                "name": "Boxtroll",
+                "description": "盒子怪 - 监控盲盒盈亏",
+                "wdir": "[INSTALLDIR",
+                "target": "[INSTALLDIR]\\boxtroll.exe"
+            }
+        ]
+    },
     "choco": {
       "description": "Boxtroll",
       "project-url": "https://github.com/Eikasia30/boxtroll",
