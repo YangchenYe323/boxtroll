@@ -27,6 +27,7 @@ var (
 	LOG_MAX_BACKUPS int
 	LOG_MAX_AGE     int
 	ROOM_ID         int64
+	SHOW_VERSION    bool
 )
 
 // Derived global flags
@@ -67,12 +68,13 @@ var BoxtrollCmd = &cobra.Command{
 }
 
 func init() {
-	BoxtrollCmd.PersistentFlags().StringVarP(&ROOT_DIR, "root-dir", "R", "", "Root working directory of Boxtroll")
-	BoxtrollCmd.PersistentFlags().CountVarP(&VEREBOSE, "verbose", "v", "Verbosity level")
-	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_SIZE, "log.max.size", 100, "Maximum size of log file in MB")
-	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_BACKUPS, "log.max.backups", 10, "Maximum number of log files to keep")
-	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_AGE, "log.max.age", 30, "Maximum age of log files in days")
-	BoxtrollCmd.PersistentFlags().Int64VarP(&ROOM_ID, "roomid", "r", 0, "Room ID to monitor")
+	BoxtrollCmd.PersistentFlags().StringVarP(&ROOT_DIR, "root-dir", "R", "", "改变boxtroll工作目录")
+	BoxtrollCmd.PersistentFlags().CountVarP(&VEREBOSE, "verbose", "v", "输出日志的详细程度")
+	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_SIZE, "log.max.size", 100, "日志文件的最大大小(MB)")
+	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_BACKUPS, "log.max.backups", 10, "日志文件的最大备份数量")
+	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_AGE, "log.max.age", 30, "日志文件的最大保存时间(天)")
+	BoxtrollCmd.PersistentFlags().Int64VarP(&ROOM_ID, "roomid", "r", 0, "要监控的直播间ID")
+	BoxtrollCmd.PersistentFlags().BoolVarP(&SHOW_VERSION, "version", "V", false, "显示版本信息")
 
 	// These flags are needed so sub-commands located in different packages can access them
 	// but we don't want the user to be able to set them, as they will be overridden anyway.
@@ -89,6 +91,11 @@ func init() {
 }
 
 func RunBoxtroll(cmd *cobra.Command, args []string) {
+	if SHOW_VERSION {
+		cmd.Println("boxtroll version: ", Version)
+		return
+	}
+
 	ctx := cmd.Context()
 
 	// Initialize User

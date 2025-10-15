@@ -1,0 +1,37 @@
+{
+    "product": "Boxtroll",
+    "company": "Eikasia30",
+    "upgrade-code": "06cab029-601a-4ac9-a5eb-72a2dca06e84",
+    "files": {
+      "guid": "b831d35d-4132-40cb-bd9f-73c1996c6b37",
+      "items": ["boxtroll.exe"]
+    },
+    "env": {
+      "guid": "d0d3b8ea-2086-4ead-b1b4-0702ac34bb30",
+      "vars": [
+        {
+          "name": "PATH",
+          "value": "[INSTALLDIR]",
+          "permanent": "no",
+          "system": "no",
+          "action": "set",
+          "part": "last"
+        }
+      ]
+    },
+    "shortcuts": {
+        "guid": "f0389111-077f-4e3b-867a-243078946395",
+        "items": [
+            {
+                "name": "Boxtroll",
+                "target": "[INSTALLDIR]\\boxtroll.exe"
+            }
+        ]
+    },
+    "choco": {
+      "description": "Boxtroll",
+      "project-url": "https://github.com/Eikasia30/boxtroll",
+      "tags": "boxtroll",
+      "license-url": "https://github.com/Eikasia30/boxtroll/blob/main/LICENSE"
+    }
+  }
