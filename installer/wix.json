@@ -19,15 +19,6 @@
         }
       ]
     },
-    "shortcuts": {
-        "guid": "f0389111-077f-4e3b-867a-243078946395",
-        "items": [
-            {
-                "name": "Boxtroll",
-                "target": "[INSTALLDIR]\\boxtroll.exe"
-            }
-        ]
-    },
     "choco": {
       "description": "Boxtroll",
       "project-url": "https://github.com/Eikasia30/boxtroll",
