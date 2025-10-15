@@ -44,8 +44,10 @@ jobs:
           Move-Item -Force wix.json.tmp wix.json
           
       - name: Create MSI installer
+        shell: powershell
         run: |
-          go-msi make --msi boxtroll-${{ steps.version.outputs.version }}.msi --version ${{ steps.version.outputs.version }} --arch amd64
+          $env:PATH = "$env:GOPATH\bin;$env:PATH"
+          go-msi make --msi boxtroll-${{ steps.version.outputs.version }}.msi --version ${{ steps.version.outputs.version }} --arch amd64 --src $PWD --out $PWD
           
       - name: Create Release
         id: create_release
