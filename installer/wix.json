@@ -25,7 +25,7 @@
             {
                 "name": "Boxtroll",
                 "description": "Launch Boxtroll CLI",
-                "target": "[System64Folder]cmd.exe",
+                "target": "[SystemFolder]cmd.exe",
                 "arguments": "/K \"[INSTALLDIR]boxtroll.exe\"",
                 "icon": ""
             }
