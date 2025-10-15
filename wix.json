@@ -1,0 +1,28 @@
+{
+    "product": "boxtroll",
+    "company": "eikasia30",
+    "licnese": "MIT",
+    "files": {
+        "guid": "",
+        "items": [
+            "boxtroll.exe"
+        ]
+    },
+    "shortcuts": {
+        "guid": "",
+        "items": [
+            {
+                "name": "boxtroll",
+                "description": "盒子怪 - 监控Bilibili直播间盲盒盈亏",
+                "target": "[INSTALLDIR]\\go-msi.exe",
+                "wdir": "INSTALLDIR",
+                "arguments": ""
+            }
+        ]
+    },
+    "choco": {
+        "description": "盒子怪 - 监控Bilibili直播间盲盒盈亏",
+        "project-url": "https://github.com/YangchenYe323/boxtroll",
+        "tags": "bilibili"
+    }
+}

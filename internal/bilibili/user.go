@@ -1,0 +1,61 @@
+package bilibili
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+)
+
+type UserInfo struct {
+	MID int64 `json:"mid"`
+}
+
+func GetUserInfo(ctx context.Context) (*UserInfo, error) {
+	return DefaultClient.GetUserInfo(ctx)
+}
+
+// Get the user info from the currently logged in credential
+func (c *Client) GetUserInfo(ctx context.Context) (*UserInfo, error) {
+	if c.Credential == nil {
+		return nil, ErrNeedLogin
+	}
+
+	if err := c.WbiKeys.update(ctx, c, false); err != nil {
+		return nil, err
+	}
+
+	req, err := c.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		"https://api.bilibili.com/x/space/myinfo",
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var n response[UserInfo]
+	if err := json.Unmarshal(body, &n); err != nil {
+		return nil, err
+	}
+
+	data, err := n.DataOrError()
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
