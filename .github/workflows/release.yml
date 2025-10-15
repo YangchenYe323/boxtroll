@@ -47,7 +47,7 @@ jobs:
 
       - name: Go-MSI Check JSON
         run: |
-          go-msi check-json installer/wix.json
+          go-msi check-json --path installer/wix.json
         shell: bash
 
       - name: Build MSI
