@@ -1,7 +1,7 @@
 {
     "product": "boxtroll",
     "company": "eikasia30",
-    "licnese": "Apache-2.0",
+    "license": "Apache-2.0",
     "files": {
         "guid": "",
         "items": [
@@ -14,7 +14,7 @@
             {
                 "name": "boxtroll",
                 "description": "盒子怪 - 监控Bilibili直播间盲盒盈亏",
-                "target": "[INSTALLDIR]\\go-msi.exe",
+                "target": "[INSTALLDIR]\\boxtroll.exe",
                 "wdir": "INSTALLDIR",
                 "arguments": ""
             }
