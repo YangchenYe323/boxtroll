@@ -45,6 +45,11 @@ jobs:
           go-msi check-env
         shell: bash
 
+      - name: Go-MSI Check JSON
+        run: |
+          go-msi check-json installer/wix.json
+        shell: bash
+
       - name: Build MSI
         run: |
           export TMP="$PWD/tmp"
