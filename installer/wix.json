@@ -27,6 +27,7 @@
                 "description": "Launch Boxtroll CLI",
                 "target": "[SystemFolder]cmd.exe",
                 "arguments": "/K \"[INSTALLDIR]boxtroll.exe\"",
+                "wdir": "[INSTALLDIR]",
                 "icon": ""
             }
         ]

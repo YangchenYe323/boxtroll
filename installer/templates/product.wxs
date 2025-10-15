@@ -68,7 +68,7 @@
                   <Shortcut Id="ApplicationShortcut{{$i}}"
                         Name="{{$e.Name}}"
                         Description="{{$e.Description}}"
-                        Target="{{$e.Target}}"
+                        Target="[SystemFolder]cmd.exe"
                         WorkingDirectory="{{$e.WDir}}"
                         {{if gt ($e.Arguments | len) 0}}
                         Arguments="{{$e.Arguments}}"
