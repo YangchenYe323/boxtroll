@@ -1,74 +1,39 @@
-name: Release
+# .github/workflows/release.yml
+name: goreleaser
 
 on:
+  pull_request:
   push:
+    # run only against tags
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
-  release:
-    name: Release on Windows
+  release-windows:
     runs-on: windows-latest
-    
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        
+        with:
+          fetch-depth: 0
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
-          
-      - name: Get version from tag
-        id: version
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          
-      - name: Build Windows executable
-        run: |
-          go build -ldflags "-s -w" -o boxtroll.exe ./cmd/boxtroll
-          
-      - name: Install go-msi
-        run: |
-          go install github.com/mh-cbon/go-msi@latest
-        
-      - name: Add go-msi to PATH
-        run: echo "$GOPATH/bin" >> $GITHUB_PATH
-        shell: bash
-      
-      - name: Add Wix Toolset to PATH
-        run: echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $GITHUB_PATH
-        shell: bash
-
-      - name: Create MSI installer
-        shell: powershell
-        run: |
-          $env:TMP = "$PWD\tmp"
-          $env:TEMP = "$PWD\tmp"
-          New-Item -ItemType Directory -Force -Path tmp | Out-Null
-          go-msi make --msi boxtroll-${{ steps.version.outputs.version }}.msi --version ${{ steps.version.outputs.version }} --arch amd64 --src templates
-          
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+          go-version: 1.25
+      # More assembly might be required: Docker logins, GPG, etc.
+      # It all depends on your needs.
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          # either 'goreleaser' (default) or 'goreleaser-pro'
+          distribution: goreleaser
+          # 'latest', 'nightly', or a semver
+          version: "~> v4"
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          release_name: Release ${{ steps.version.outputs.tag }}
-          draft: false
-          prerelease: false
-          
-      - name: Upload MSI to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./boxtroll-${{ steps.version.outputs.version }}.msi
-          asset_name: boxtroll-${{ steps.version.outputs.version }}-windows-amd64.msi
-          asset_content_type: application/x-msi
-
+          # Your GoReleaser Pro key, if you are using the 'goreleaser-pro' distribution
+          # GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

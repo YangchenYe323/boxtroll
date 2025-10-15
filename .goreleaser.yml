@@ -1,0 +1,13 @@
+msi:
+  -
+    id: boxtroll
+    name: boxtroll-{{.MsiArch}}
+    wxs: ./windows/boxtroll.wsx
+    extensions:
+      - '{{ if eq .Runtime.Goos "windows" }}WixUIExtension{{ end }}'
+      - "WixUtilExtension"
+    replace: true
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    version: v4
+
+
