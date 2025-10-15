@@ -24,10 +24,9 @@
         "items": [
             {
                 "name": "Boxtroll",
-                "description": "盒子怪 - 监控盲盒盈亏",
-                "wdir": "INSTALLDIR",
-                "target": "System64Folder\\cmd.exe",
-                "arguments": "/K \"INSTALLDIR\\boxtroll.exe\"",
+                "description": "Launch Boxtroll CLI",
+                "target": "[System64Folder]cmd.exe",
+                "arguments": "/K \"[INSTALLDIR]boxtroll.exe\"",
                 "icon": ""
             }
         ]
