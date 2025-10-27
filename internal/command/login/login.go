@@ -1,6 +1,7 @@
 package login
 
 import (
+	"os"
 	"time"
 
 	"github.com/YangchenYe323/boxtroll/internal/bilibili"
@@ -25,9 +26,18 @@ func DoLogin(cmd *cobra.Command) (*bilibili.Credential, error) {
 			return nil, err
 		}
 
+		config := qrterminal.Config{
+			Level:     qrterminal.L,
+			Writer:    os.Stdout,
+			BlackChar: qrterminal.BLACK,
+			WhiteChar: qrterminal.WHITE,
+			QuietZone: 1,
+			// Do not detect Sixel support as it causes crash on Windows
+		}
+
 		qrCodeURL := qrCode.URL
 		qrCodeKey := qrCode.Key
-		qrterminal.Generate(qrCodeURL, qrterminal.M, cmd.OutOrStdout())
+		qrterminal.GenerateWithConfig(qrCodeURL, config)
 		cmd.Print("请使用手机 Bilibili 扫码登录")
 
 	poll:
