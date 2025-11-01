@@ -5,11 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/rs/zerolog/log"
 )
 
+// Implementation of the storage interface using badger.
+// Key space:
+// - user/<uid>: User metadata
+// - room/<roomID>: Room metadata
+// - <roomID>/<uid>/<boxID>: Box statistics
 type badgerStore struct {
 	b *badger.DB
 }
@@ -37,12 +44,49 @@ func (b *badgerStore) Close() error {
 	return b.b.Close()
 }
 
+func (b *badgerStore) ListAllUserIDs(ctx context.Context) ([]int64, error) {
+	var userIDs []int64
+
+	if err := b.b.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 10
+		opts.PrefetchValues = false
+		opts.Prefix = []byte("user/")
+
+		iter := txn.NewIterator(opts)
+		defer iter.Close()
+
+		for iter.Rewind(); iter.Valid(); iter.Next() {
+			item := iter.Item()
+
+			userID := strings.TrimPrefix(string(item.Key()), "user/")
+			userIDInt, err := strconv.ParseInt(userID, 10, 64)
+			if err != nil {
+				panic("Malformed user ID: " + userID)
+			}
+
+			userIDs = append(userIDs, userIDInt)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return userIDs, nil
+}
+
 func (b *badgerStore) GetUser(ctx context.Context, uid int64) (*User, error) {
 	key := fmt.Appendf(nil, "user/%d", uid)
 
 	var user User
 	if err := b.b.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
+
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return fmt.Errorf("%w: user %d not found", ErrNotFound, uid)
+		}
+
 		if err != nil {
 			return err
 		}
@@ -145,20 +189,89 @@ func (b *badgerStore) SetBoxStatistics(ctx context.Context, transfers []BoxStati
 	})
 }
 
+func (b *badgerStore) ListAllBoxSenderUserIDs(ctx context.Context, roomID int64) ([]int64, error) {
+	var userIDs []int64
+
+	if err := b.b.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 10
+		opts.PrefetchValues = false
+		opts.Prefix = fmt.Appendf(nil, "%d/", roomID)
+
+		iter := txn.NewIterator(opts)
+		defer iter.Close()
+
+		for iter.Rewind(); iter.Valid(); iter.Next() {
+			item := iter.Item()
+
+			// Trim <roommID>/ prefix and /<boxID> suffix
+			userID := strings.TrimPrefix(string(item.Key()), fmt.Sprintf("%d/", roomID))
+			userID, _, _ = strings.Cut(userID, "/")
+			userIDInt, err := strconv.ParseInt(userID, 10, 64)
+
+			if err != nil {
+				panic("Malformed user ID: " + userID)
+			}
+
+			userIDs = append(userIDs, userIDInt)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return userIDs, nil
+}
+
+func (b *badgerStore) ListAllBoxStatistics(ctx context.Context, roomID int64) (map[string]*BoxStatistics, error) {
+	result := make(map[string]*BoxStatistics)
+
+	if err := b.b.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = fmt.Appendf(nil, "%d/", roomID)
+
+		iter := txn.NewIterator(opts)
+		defer iter.Close()
+
+		for iter.Rewind(); iter.Valid(); iter.Next() {
+			item := iter.Item()
+			key := item.Key()
+
+			if err := item.Value(func(val []byte) error {
+				var st BoxStatistics
+				if err := json.Unmarshal(val, &st); err != nil {
+					return err
+				}
+				result[string(key)] = &st
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 type badgerLoggerAdapter struct{}
 
 func (l *badgerLoggerAdapter) Errorf(format string, v ...interface{}) {
-	log.Error().Msgf(format, v...)
+	log.Error().Str("component", "badger").Msgf(format, v...)
 }
 
 func (l *badgerLoggerAdapter) Warningf(format string, v ...interface{}) {
-	log.Warn().Msgf(format, v...)
+	log.Warn().Str("component", "badger").Msgf(format, v...)
 }
 
 func (l *badgerLoggerAdapter) Infof(format string, v ...interface{}) {
-	log.Info().Msgf(format, v...)
+	log.Info().Str("component", "badger").Msgf(format, v...)
 }
 
 func (l *badgerLoggerAdapter) Debugf(format string, v ...interface{}) {
-	log.Debug().Msgf(format, v...)
+	log.Debug().Str("component", "badger").Msgf(format, v...)
 }

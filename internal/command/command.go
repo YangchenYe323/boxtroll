@@ -7,12 +7,16 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/YangchenYe323/boxtroll/internal/bilibili"
 	"github.com/YangchenYe323/boxtroll/internal/boxtroll"
 	"github.com/YangchenYe323/boxtroll/internal/command/login"
 	"github.com/YangchenYe323/boxtroll/internal/live"
 	"github.com/YangchenYe323/boxtroll/internal/store"
+	"github.com/andreykaipov/goobs"
+	"github.com/c-bata/go-prompt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -21,13 +25,15 @@ import (
 
 // Global persistent flags
 var (
-	ROOT_DIR        string
-	VEREBOSE        int
-	LOG_MAX_SIZE    int
-	LOG_MAX_BACKUPS int
-	LOG_MAX_AGE     int
-	ROOM_ID         int64
-	SHOW_VERSION    bool
+	ROOT_DIR           string
+	VEREBOSE           int
+	LOG_MAX_SIZE       int
+	LOG_MAX_BACKUPS    int
+	LOG_MAX_AGE        int
+	ROOM_ID            int64
+	SHOW_VERSION       bool
+	OBS_WEBSOCKET_ADDR string // OBS websocket connection address
+	OBS_PASSWORD       string // OBS websocket password
 )
 
 // Derived global flags
@@ -73,8 +79,11 @@ func init() {
 	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_SIZE, "log.max.size", 100, "日志文件的最大大小(MB)")
 	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_BACKUPS, "log.max.backups", 10, "日志文件的最大备份数量")
 	BoxtrollCmd.PersistentFlags().IntVar(&LOG_MAX_AGE, "log.max.age", 30, "日志文件的最大保存时间(天)")
-	BoxtrollCmd.PersistentFlags().Int64VarP(&ROOM_ID, "roomid", "r", 0, "要监控的直播间ID")
 	BoxtrollCmd.PersistentFlags().BoolVarP(&SHOW_VERSION, "version", "V", false, "显示版本信息")
+
+	BoxtrollCmd.PersistentFlags().Int64VarP(&ROOM_ID, "room.id", "r", 0, "要监控的直播间ID")
+	BoxtrollCmd.PersistentFlags().StringVarP(&OBS_WEBSOCKET_ADDR, "obs.websocket.addr", "U", "localhost:4455", "OBS websocket连接URL")
+	BoxtrollCmd.PersistentFlags().StringVarP(&OBS_PASSWORD, "obs.password", "P", "", "OBS websocket密码")
 
 	// These flags are needed so sub-commands located in different packages can access them
 	// but we don't want the user to be able to set them, as they will be overridden anyway.
@@ -108,11 +117,39 @@ func RunBoxtroll(cmd *cobra.Command, args []string) {
 	// Ininitialize Room ID
 	if ROOM_ID == 0 {
 		// Prompt user to input room ID
-		cmd.Print("请输入直播间号: ")
-		_, err := fmt.Scanln(&ROOM_ID)
+		line := prompt.Input("请输入直播间号: ", func(d prompt.Document) []prompt.Suggest { return nil })
+		ROOM_ID, err = strconv.ParseInt(line, 10, 64)
 		if err != nil {
-			log.Fatal().Err(err).Msg("无法获取直播间号")
+			log.Fatal().Err(err).Msgf("无法解析直播间号 %s", line)
 		}
+	}
+
+	s, err := store.NewBadger(DB_DIR)
+	if err != nil {
+		log.Fatal().Err(err).Msg("无法初始化数据库")
+	}
+
+	if OBS_WEBSOCKET_ADDR == "" {
+		log.Fatal().Msg("OBS websocket URL is not set, please set --obs.websocket.url")
+	}
+
+	if OBS_PASSWORD == "" {
+		// Prompt user to input password
+		cmd.Println("盒子怪可以与OBS联动，更新OBS文本源的内容。")
+		cmd.Println("若想要使用，请打开OBS，工具 - WebSocket服务器设置 - 启用WebSocket服务器，不要更改其他设置并设置密码。")
+		line := prompt.Input("请输入OBS websocket密码 (留空则不使用OBS): ", func(d prompt.Document) []prompt.Suggest { return nil })
+		OBS_PASSWORD = strings.TrimSpace(line)
+	}
+
+	var obs *goobs.Client
+	if OBS_PASSWORD != "" {
+		obs, err = goobs.New(OBS_WEBSOCKET_ADDR, goobs.WithPassword(OBS_PASSWORD))
+		if err != nil {
+			log.Fatal().Err(err).Str("url", OBS_WEBSOCKET_ADDR).Str("password", OBS_PASSWORD).Msg("无法连接到OBS, 请先打开OBS再启动盒子怪, 并确认密码是否正确")
+		}
+		log.Info().Msg("成功连接到OBS websocket")
+	} else {
+		log.Info().Msg("不使用OBS联动")
 	}
 
 	// Fetch message stream info for the given live room
@@ -122,12 +159,11 @@ func RunBoxtroll(cmd *cobra.Command, args []string) {
 	}
 	stream := live.NewStream(ROOM_ID, uid, streamInfo.Token, streamInfo.HostList)
 
-	s, err := store.NewBadger(DB_DIR)
+	boxtroll, err := boxtroll.New(ctx, s, stream, OBS_WEBSOCKET_ADDR, OBS_PASSWORD, obs)
 	if err != nil {
-		log.Fatal().Err(err).Msg("无法初始化数据库")
+		log.Fatal().Err(err).Msg("无法启动盒子怪")
 	}
 
-	boxtroll := boxtroll.New(s, stream)
 	boxtroll.Run(ctx)
 }
 
@@ -179,7 +215,7 @@ func initializeBilibili(ctx context.Context, credential *bilibili.Credential) (i
 	credential.Buvid3 = buvid.B3
 	bilibili.Login(credential)
 
-	user, err := bilibili.GetUserInfo(ctx)
+	user, err := bilibili.GetMyInfo(ctx)
 	if err != nil {
 		return -1, err
 	}
