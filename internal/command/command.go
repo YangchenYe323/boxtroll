@@ -12,7 +12,7 @@ import (
 	"github.com/YangchenYe323/boxtroll/internal/boxtroll"
 	"github.com/YangchenYe323/boxtroll/internal/command/login"
 	"github.com/YangchenYe323/boxtroll/internal/live"
-	"github.com/dgraph-io/badger/v4"
+	"github.com/YangchenYe323/boxtroll/internal/store"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -122,13 +122,12 @@ func RunBoxtroll(cmd *cobra.Command, args []string) {
 	}
 	stream := live.NewStream(ROOM_ID, uid, streamInfo.Token, streamInfo.HostList)
 
-	// Initialize database
-	db, err := badger.Open(badger.DefaultOptions(DB_DIR))
+	s, err := store.NewBadger(DB_DIR)
 	if err != nil {
 		log.Fatal().Err(err).Msg("无法初始化数据库")
 	}
 
-	boxtroll := boxtroll.New(db, stream)
+	boxtroll := boxtroll.New(s, stream)
 	boxtroll.Run(ctx)
 }
 
@@ -161,6 +160,11 @@ func initializeUser(ctx context.Context, cmd *cobra.Command) (int64, error) {
 	credential, err := login.DoLogin(cmd)
 	if err != nil {
 		return -1, err
+	}
+
+	// Save credential to file
+	if err := login.SaveCredential(CREDS_DIR, credential); err != nil {
+		log.Warn().Err(err).Msg("无法保存登录凭证，您下次登录时需要重新扫描二维码")
 	}
 
 	return initializeBilibili(ctx, credential)

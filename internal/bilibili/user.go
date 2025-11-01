@@ -8,7 +8,9 @@ import (
 )
 
 type UserInfo struct {
-	MID int64 `json:"mid"`
+	MID  int64  `json:"mid"`
+	Name string `json:"name"`
+	Face string `json:"face"`
 }
 
 func GetUserInfo(ctx context.Context) (*UserInfo, error) {

@@ -2,25 +2,23 @@ package boxtroll
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/YangchenYe323/boxtroll/internal/bilibili"
 	"github.com/YangchenYe323/boxtroll/internal/live"
+	"github.com/YangchenYe323/boxtroll/internal/store"
 	"github.com/YangchenYe323/boxtroll/internal/throttle"
-	"github.com/dgraph-io/badger/v4"
 	"github.com/rs/zerolog/log"
 )
 
 type Boxtroll struct {
-	db     *badger.DB
+	db     store.Store
 	stream *live.Stream
 
 	// Temporary store, stores statistics of the current accumulating batch
 	// uid -> boxID -> statistics
-	curBatch map[int64]map[int64]*BoxStatistics
+	curBatch map[int64]map[int64]*store.BoxStatistics
 	// Box Gift ID -> Box Gift Name, e.g., 心动盲盒.
 	// Currently we do not persist box names, because the only way we send danmaku now
 	// is when user actually send a gift, in which case we always get the fresh name of
@@ -34,11 +32,11 @@ type Boxtroll struct {
 	throttler *throttle.Throttler
 }
 
-func New(db *badger.DB, stream *live.Stream) *Boxtroll {
+func New(db store.Store, stream *live.Stream) *Boxtroll {
 	return &Boxtroll{
 		db:       db,
 		stream:   stream,
-		curBatch: make(map[int64]map[int64]*BoxStatistics),
+		curBatch: make(map[int64]map[int64]*store.BoxStatistics),
 		boxNames: make(map[int64]string),
 		// Bilibili has a pretty stringent and not so predictable rate limit for
 		// sending danmaku, we do ((0.8, 1.2) * 2) * seconds throttle
@@ -72,8 +70,18 @@ type finishedBatch struct {
 	uid     int64
 	boxID   int64
 	boxName string
-	st      BoxStatistics
-	accumSt BoxStatistics
+	st      store.BoxStatistics
+	accumSt store.BoxStatistics
+}
+
+// Implement store.BoxStatisticsTransfer interface
+func (f *finishedBatch) Key() []byte {
+	return f.key
+}
+
+// Implement store.BoxStatisticsTransfer interface
+func (f *finishedBatch) GetBoxStatistics() *store.BoxStatistics {
+	return &f.accumSt
 }
 
 // Flush finished batches to database and send danmaku report to Bilibili.
@@ -97,7 +105,7 @@ func (b *Boxtroll) flushBatch(ctx context.Context) error {
 			}
 
 			entries = append(entries, &finishedBatch{
-				key:     fmt.Appendf(nil, "%d/%d/%d", b.stream.RoomID, uid, boxID),
+				key:     b.db.BoxStatisticsKey(b.stream.RoomID, uid, boxID),
 				uid:     uid,
 				boxID:   boxID,
 				boxName: boxName,
@@ -108,25 +116,12 @@ func (b *Boxtroll) flushBatch(ctx context.Context) error {
 		}
 	}
 
-	if err := b.db.View(func(txn *badger.Txn) error {
-		for _, entry := range entries {
-			item, err := txn.Get(entry.key)
-			if errors.Is(err, badger.ErrKeyNotFound) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
+	var transfers []store.BoxStatisticsTransfer
+	for _, entry := range entries {
+		transfers = append(transfers, entry)
+	}
 
-			if err := item.Value(func(val []byte) error {
-				return json.Unmarshal(val, &entry.accumSt)
-			}); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}); err != nil {
+	if err := b.db.GetBoxStatistics(ctx, transfers, store.NotFoundBehaviorSkip); err != nil {
 		return err
 	}
 
@@ -135,18 +130,7 @@ func (b *Boxtroll) flushBatch(ctx context.Context) error {
 		entry.accumSt.Merge(entry.st)
 	}
 
-	if err := b.db.Update(func(txn *badger.Txn) error {
-		for _, entry := range entries {
-			bytes, err := json.Marshal(&entry.accumSt)
-			if err != nil {
-				return err
-			}
-			if err := txn.Set(entry.key, bytes); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
+	if err := b.db.SetBoxStatistics(ctx, transfers); err != nil {
 		return err
 	}
 
@@ -202,10 +186,10 @@ func (b *Boxtroll) handleSendGift(sendGift *live.SendGiftMessage) {
 	}
 
 	if _, ok := b.curBatch[sendGift.UID]; !ok {
-		b.curBatch[sendGift.UID] = make(map[int64]*BoxStatistics)
+		b.curBatch[sendGift.UID] = make(map[int64]*store.BoxStatistics)
 	}
 	if _, ok := b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID]; !ok {
-		b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID] = &BoxStatistics{}
+		b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID] = &store.BoxStatistics{}
 	}
 
 	st := b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID]
