@@ -2,52 +2,109 @@ package boxtroll
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/YangchenYe323/boxtroll/internal/bilibili"
 	"github.com/YangchenYe323/boxtroll/internal/live"
 	"github.com/YangchenYe323/boxtroll/internal/store"
 	"github.com/YangchenYe323/boxtroll/internal/throttle"
+	"github.com/andreykaipov/goobs"
 	"github.com/rs/zerolog/log"
 )
 
+// Boxtroll is the driver of the application.
 type Boxtroll struct {
-	db     store.Store
+	db *boxtrollStore
+	// Live Stream for receiving danmaku/gift messages
 	stream *live.Stream
+	// Throttler for sending danmaku to Bilibili to avoid rate limiting
+	throttler *throttle.Throttler
 
+	// OBS Websocket connection for updating text inputs
+	obsAddr         string
+	obsPassword     string
+	obs             *goobs.Client
+	inputSourceKind string
+	sceneName       string
+	sourceName      string
+	// Signal that the remote OBS websocket connection is lost. We will reconnect in the next update
+	reconnect bool
+
+	// State of the current live stream
+	cuStreamStMutex sync.RWMutex
+
+	// Local state of the main event loop.
+	// The below fields are owned by the main event loop and should not be accessed by background goroutines.
+
+	// Stores the statistics of the current live stream
+	curStreamSt map[int64]map[int64]*store.BoxStatistics
 	// Temporary store, stores statistics of the current accumulating batch
 	// uid -> boxID -> statistics
+	// This is NOT the same as the store.BoxStatisticsCache in the store, which stores the accumulation of
+	// all the box statistics.
 	curBatch map[int64]map[int64]*store.BoxStatistics
+	// A most up-to-date map of boxIDs to box names kept in sync with the ongoing live stream messages.
 	// Box Gift ID -> Box Gift Name, e.g., 心动盲盒.
-	// Currently we do not persist box names, because the only way we send danmaku now
-	// is when user actually send a gift, in which case we always get the fresh name of
-	// the blind box.
-	// In the future if we want to extend the functionality, e.g., by implementing control
-	// messages to get historical data, etc., we'd need a separate channel for persisting and
-	// caching metadata like gift name, username, etc.
+	// Even though we do store box information inside theb data store updated on every start-up, it is not guaranteed
+	// to be up-to-date. For example, if a new box is released while the live stream is going on, the new box will not
+	// have been updated in the data store. We keep a cutting-edge-fresh cache here to power live danmaku reporting
+	// and use the persisted metadata for asynchronous reports.
 	boxNames map[int64]string
-
-	// Throttler for sending danmaku
-	throttler *throttle.Throttler
 }
 
-func New(db store.Store, stream *live.Stream) *Boxtroll {
+func New(ctx context.Context, db store.Store, stream *live.Stream, obsAddr string, obsPassword string, obs *goobs.Client) (*Boxtroll, error) {
+	log.Info().Msg("启动盒子怪，更新直播间和用户信息...")
+
+	_, err := refreshRoom(ctx, db, stream.RoomID)
+	if err != nil {
+		return nil, fmt.Errorf("无法刷新直播间信息: %w", err)
+	}
+
+	if err := refreshAllUsers(ctx, db, stream.RoomID); err != nil {
+		return nil, fmt.Errorf("无法刷新所有用户信息: %w", err)
+	}
+
+	log.Info().Msg("直播间和用户信息更新完成")
+
+	boxtrollStore, err := newBoxtrollStore(ctx, db, stream.RoomID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Boxtroll{
-		db:       db,
-		stream:   stream,
-		curBatch: make(map[int64]map[int64]*store.BoxStatistics),
-		boxNames: make(map[int64]string),
+		db:          boxtrollStore,
+		stream:      stream,
+		obsAddr:     obsAddr,
+		obsPassword: obsPassword,
+		obs:         obs,
 		// Bilibili has a pretty stringent and not so predictable rate limit for
 		// sending danmaku, we do ((0.8, 1.2) * 2) * seconds throttle
 		throttler: throttle.New(1600*time.Millisecond, 2400*time.Millisecond),
-	}
+
+		curBatch:    make(map[int64]map[int64]*store.BoxStatistics),
+		curStreamSt: make(map[int64]map[int64]*store.BoxStatistics),
+		boxNames:    make(map[int64]string),
+	}, nil
 }
 
 func (b *Boxtroll) Run(ctx context.Context) {
 	msgChan := make(chan live.Message, 100)
 
 	go b.stream.Run(ctx, msgChan)
+
+	var obsTimer *time.Ticker
+	if b.obs != nil {
+		obsTimer = time.NewTicker(5 * time.Second)
+		if err := b.initializeOBS(ctx); err != nil {
+			log.Fatal().Err(err).Msg("无法初始化OBS")
+		}
+	} else {
+		obsTimer = time.NewTicker(time.Hour * 9999)
+		obsTimer.Stop()
+	}
 
 	for {
 		if err := b.flushBatch(ctx); err != nil {
@@ -59,6 +116,9 @@ func (b *Boxtroll) Run(ctx context.Context) {
 			return
 		case msg := <-msgChan:
 			b.handleMessage(msg)
+		case <-obsTimer.C:
+			// If obs is nil, timer will never fire
+			b.updateOBS(ctx)
 		case <-time.After(2 * time.Second):
 		}
 	}
@@ -92,6 +152,12 @@ func (f *finishedBatch) GetBoxStatistics() *store.BoxStatistics {
 func (b *Boxtroll) flushBatch(ctx context.Context) error {
 	var entries []*finishedBatch
 	for uid, boxIDMap := range b.curBatch {
+		go func(uid int64) {
+			if err := b.createUserIfNotExists(ctx, uid); err != nil {
+				log.Err(err).Int64("uid", uid).Msg("无法创建用户")
+			}
+		}(uid)
+
 		for boxID, st := range boxIDMap {
 			// Since we populate the box names upon seeing a SEND_GIFT msg, and populate
 			// current batch in the same place, it is impossible for boxName to be nil
@@ -135,6 +201,28 @@ func (b *Boxtroll) flushBatch(ctx context.Context) error {
 	}
 
 	go b.sendDanmakuReport(ctx, entries)
+
+	return nil
+}
+
+func (b *Boxtroll) createUserIfNotExists(ctx context.Context, uid int64) error {
+	_, err := b.db.GetUser(ctx, uid)
+
+	if errors.Is(err, store.ErrNotFound) {
+		user, err := bilibili.GetUserInfo(ctx, uid)
+		if err != nil {
+			return err
+		}
+
+		if err := b.db.SetUser(ctx, uid, &store.User{
+			MID:  uid,
+			Name: user.Name,
+			Face: user.Face,
+		}); err != nil {
+			return err
+		}
+		return nil
+	}
 
 	return nil
 }
@@ -191,12 +279,26 @@ func (b *Boxtroll) handleSendGift(sendGift *live.SendGiftMessage) {
 	if _, ok := b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID]; !ok {
 		b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID] = &store.BoxStatistics{}
 	}
+	if _, ok := b.curStreamSt[sendGift.UID]; !ok {
+		b.curStreamSt[sendGift.UID] = make(map[int64]*store.BoxStatistics)
+	}
+	if _, ok := b.curStreamSt[sendGift.UID][sendGift.BlindGift.OriginalGiftID]; !ok {
+		b.curStreamSt[sendGift.UID][sendGift.BlindGift.OriginalGiftID] = &store.BoxStatistics{}
+	}
 
+	// Update current unsent batch
 	st := b.curBatch[sendGift.UID][sendGift.BlindGift.OriginalGiftID]
 	st.TotalNum += sendGift.Num
 	st.TotalOriginalPrice += sendGift.BlindGift.OriginalGiftPrice * sendGift.Num
 	st.TotalPrice += sendGift.Price * sendGift.Num
 	st.LastUpdateTime = time.Now()
+
+	// Update current stream statistics
+	curSt := b.curStreamSt[sendGift.UID][sendGift.BlindGift.OriginalGiftID]
+	curSt.TotalNum += sendGift.Num
+	curSt.TotalOriginalPrice += sendGift.BlindGift.OriginalGiftPrice * sendGift.Num
+	curSt.TotalPrice += sendGift.Price * sendGift.Num
+	curSt.LastUpdateTime = time.Now()
 
 	// Populate the box names lazily
 	if _, ok := b.boxNames[sendGift.BlindGift.OriginalGiftID]; !ok {

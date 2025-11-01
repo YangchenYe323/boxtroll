@@ -25,11 +25,15 @@ const (
 // Storage layer interface for boxtroll
 type Store interface {
 	Close() error
+	// List all user IDs in the store.
+	ListAllUserIDs(ctx context.Context) ([]int64, error)
 	// Get user info by UID.
+	// If the given user is not found, return ErrNotFound.
 	GetUser(ctx context.Context, uid int64) (*User, error)
 	// Set user info by UID.
 	SetUser(ctx context.Context, uid int64, user *User) error
 	// Get room info by Room ID.
+	// If the given room is not found, return ErrNotFound.
 	GetRoom(ctx context.Context, roomID int64) (*Room, error)
 	// Set room info by Room ID.
 	SetRoom(ctx context.Context, roomID int64, room *Room) error
@@ -39,6 +43,10 @@ type Store interface {
 	GetBoxStatistics(ctx context.Context, transfers []BoxStatisticsTransfer, notFoundBehavior NotFoundBehavior) error
 	// Set box statistics.
 	SetBoxStatistics(ctx context.Context, transfers []BoxStatisticsTransfer) error
+	// Get all user IDs that have sent box gifts in the given room.
+	ListAllBoxSenderUserIDs(ctx context.Context, roomID int64) ([]int64, error)
+	// Get all box statistics for the given room
+	ListAllBoxStatistics(ctx context.Context, roomID int64) (map[string]*BoxStatistics, error)
 }
 
 // Statistics for a single <roomID, uid, boxID>, meaning,
@@ -87,9 +95,9 @@ type Gift struct {
 
 // Metadata for a single outcome of a blind box.
 type BlindBoxOutcome struct {
-	GiftID      int64   `json:"gift_id"`     // Gift ID
-	Price       int64   `json:"price"`       // Price of the outcome
-	Name        string  `json:"name"`        // Name of the outcome
-	ImgURL      string  `json:"img_url"`     // Image URL of the outcome
-	Probability float64 `json:"probability"` // Probability of the outcome
+	GiftID int64  `json:"gift_id"` // Gift ID
+	Price  int64  `json:"price"`   // Price of the outcome
+	Name   string `json:"name"`    // Name of the outcome
+	ImgURL string `json:"img_url"` // Image URL of the outcome
+	Chance string `json:"chance"`  // Chance of the outcome, e.g., "0.1%"
 }
