@@ -106,7 +106,13 @@ func (b *Boxtroll) updateOBS(ctx context.Context) {
 		b.reconnect = false
 	}
 
-	report := b.generateOBSReport(ctx)
+	var report string
+	if b.reportIdx%2 == 0 {
+		report = b.boxRankReport(ctx)
+	} else {
+		report = b.ticketRankReport(ctx)
+	}
+	b.reportIdx++
 
 	if report == "" {
 		return
@@ -130,7 +136,52 @@ func (b *Boxtroll) updateOBS(ctx context.Context) {
 	}
 }
 
-func (b *Boxtroll) generateOBSReport(ctx context.Context) string {
+func (b *Boxtroll) ticketRankReport(ctx context.Context) string {
+	type userTicketReport struct {
+		uid       int64
+		name      string
+		ticketNum int64
+	}
+
+	var topFiveTicketUsers []*userTicketReport
+	for uid, ticketNum := range b.curTicketNum {
+		user, err := b.db.GetUser(ctx, uid)
+		if err != nil {
+			// Should not happen but don't panic
+			log.Warn().Err(err).Int64("uid", uid).Msg("未知的盲盒用户")
+			continue
+		}
+		topFiveTicketUsers = append(topFiveTicketUsers, &userTicketReport{
+			uid:       uid,
+			name:      user.Name,
+			ticketNum: ticketNum,
+		})
+	}
+
+	// Sort descending
+	slices.SortFunc(topFiveTicketUsers, func(a *userTicketReport, b *userTicketReport) int {
+		return int(b.ticketNum - a.ticketNum)
+	})
+	if len(topFiveTicketUsers) > 5 {
+		topFiveTicketUsers = topFiveTicketUsers[:5]
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("本场电影票排行榜: \n")
+	for i := range 5 {
+		sb.WriteString(fmt.Sprintf("%d. ", i+1))
+		if i < len(topFiveTicketUsers) {
+			sb.WriteString(fmt.Sprintf("%s: %d 张\n", topFiveTicketUsers[i].name, topFiveTicketUsers[i].ticketNum))
+		} else {
+			sb.WriteString("暂无~\n")
+		}
+	}
+
+	return sb.String()
+}
+
+func (b *Boxtroll) boxRankReport(ctx context.Context) string {
 	type userAggregateReport struct {
 		uid         int64
 		name        string
@@ -176,11 +227,11 @@ func (b *Boxtroll) generateOBSReport(ctx context.Context) string {
 
 	// Sort in descending
 	slices.SortFunc(reports.topFiveLuckyUsers, func(a *userAggregateReport, b *userAggregateReport) int {
-		return int(a.diffBattery - b.diffBattery)
+		return int(b.diffBattery - a.diffBattery)
 	})
 	// Sort in ascending
 	slices.SortFunc(reports.topFiveUnluckyUsers, func(a *userAggregateReport, b *userAggregateReport) int {
-		return int(b.diffBattery - a.diffBattery)
+		return int(a.diffBattery - b.diffBattery)
 	})
 
 	if len(reports.topFiveLuckyUsers) > 5 {

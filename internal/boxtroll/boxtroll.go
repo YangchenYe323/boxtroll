@@ -32,6 +32,7 @@ type Boxtroll struct {
 	sourceName      string
 	// Signal that the remote OBS websocket connection is lost. We will reconnect in the next update
 	reconnect bool
+	reportIdx int64
 
 	// State of the current live stream
 	cuStreamStMutex sync.RWMutex
@@ -41,6 +42,8 @@ type Boxtroll struct {
 
 	// Stores the statistics of the current live stream
 	curStreamSt map[int64]map[int64]*store.BoxStatistics
+	// 存储当前直播间用户的电影票数量
+	curTicketNum map[int64]int64
 	// Temporary store, stores statistics of the current accumulating batch
 	// uid -> boxID -> statistics
 	// This is NOT the same as the store.BoxStatisticsCache in the store, which stores the accumulation of
@@ -84,9 +87,10 @@ func New(ctx context.Context, db store.Store, stream *live.Stream, obsAddr strin
 		// sending danmaku, we do ((0.8, 1.2) * 2) * seconds throttle
 		throttler: throttle.New(1600*time.Millisecond, 2400*time.Millisecond),
 
-		curBatch:    make(map[int64]map[int64]*store.BoxStatistics),
-		curStreamSt: make(map[int64]map[int64]*store.BoxStatistics),
-		boxNames:    make(map[int64]string),
+		curBatch:     make(map[int64]map[int64]*store.BoxStatistics),
+		curStreamSt:  make(map[int64]map[int64]*store.BoxStatistics),
+		curTicketNum: make(map[int64]int64),
+		boxNames:     make(map[int64]string),
 	}, nil
 }
 
@@ -303,6 +307,11 @@ func (b *Boxtroll) handleSendGift(sendGift *live.SendGiftMessage) {
 	// Populate the box names lazily
 	if _, ok := b.boxNames[sendGift.BlindGift.OriginalGiftID]; !ok {
 		b.boxNames[sendGift.BlindGift.OriginalGiftID] = sendGift.BlindGift.OriginalGiftName
+	}
+
+	// Update current ticket number
+	if sendGift.GiftName == "电影票" {
+		b.curTicketNum[sendGift.UID] += sendGift.Num
 	}
 }
 
